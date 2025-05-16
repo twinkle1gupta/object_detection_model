@@ -10,20 +10,19 @@ from torchvision.models import vgg16, VGG16_Weights
 from tqdm import tqdm
 import pynvml
 
-# GPU monitoring function
 def get_gpu_stats(device_id=0):
     pynvml.nvmlInit()
     handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
     mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-    mem_used = mem.used / (1024 ** 2)  # MB
-    mem_total = mem.total / (1024 ** 2)  # MB
-    mem_free = mem.free / (1024 ** 2)  # MB
-    gpu_util = util.gpu  # percent
+    mem_used = mem.used / (1024 ** 2)  
+    mem_total = mem.total / (1024 ** 2)  
+    mem_free = mem.free / (1024 ** 2)  
+    gpu_util = util.gpu  
     pynvml.nvmlShutdown()
     return gpu_util, mem_used, mem_total, mem_free
 
-# Dataset class
+
 class YOLODataset(Dataset):
     def __init__(self, csv_file, S=7, B=2, C=20, img_height=480, img_width=640):
         self.annotations = pd.read_csv(csv_file)
@@ -49,7 +48,7 @@ class YOLODataset(Dataset):
         img = cv2.resize(img, (self.img_width, self.img_height)).astype(np.float32) / 255.0
         img = torch.from_numpy(img).permute(2, 0, 1)  # HWC to CHW
 
-        # Parse bounding boxes and labels
+        
         bboxes = ast.literal_eval(row['img_gt_bbox_coords'])
         labels = ast.literal_eval(row['img_gt_class_labels'])
         target = torch.zeros((self.S, self.S, self.B * 5 + self.C), dtype=torch.float32)
@@ -82,7 +81,7 @@ def collate_fn(batch):
         return None, None
     return torch.utils.data.dataloader.default_collate(batch)
 
-# Model definition
+
 class YOLOVGG16(nn.Module):
     def __init__(self, S=7, B=2, C=20):
         super().__init__()
@@ -90,7 +89,7 @@ class YOLOVGG16(nn.Module):
         self.features = vgg.features
         for param in self.features.parameters():
             param.requires_grad = False
-        self.conv = nn.Conv2d(512, 30, kernel_size=(9, 14))  # (30, 7, 7)
+        self.conv = nn.Conv2d(512, 30, kernel_size=(9, 14))  
         self.flatten = nn.Flatten()
         self.fc1 = nn.Linear(30 * 7 * 7, 4096)
         self.fc2 = nn.Linear(4096, S * S * (B * 5 + C))
@@ -106,7 +105,7 @@ class YOLOVGG16(nn.Module):
         x = x.view(-1, self.S, self.S, self.B * 5 + self.C)
         return x
 
-# Training function with GPU/VRAM monitoring and progress bar
+
 def train_model(csv_path, batch_size=4, num_epochs=10, S=7, B=2, C=20):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -134,7 +133,7 @@ def train_model(csv_path, batch_size=4, num_epochs=10, S=7, B=2, C=20):
             optimizer.step()
             running_loss += loss.item()
 
-            # GPU stats
+            
             if device.type == 'cuda':
                 gpu_util, mem_used, mem_total, mem_free = get_gpu_stats()
                 progress_bar.set_postfix({
@@ -148,8 +147,8 @@ def train_model(csv_path, batch_size=4, num_epochs=10, S=7, B=2, C=20):
         print(f'Epoch [{epoch+1}/{num_epochs}], Average Loss: {running_loss/len(dataloader):.4f}')
     return model
 
-# Usage example
+
 if __name__ == "__main__":
-    csv_path = 'training_data.csv'  # <-- Update this to your CSV file
+    csv_path = 'training_data.csv'  
     trained_model = train_model(csv_path, batch_size=4, num_epochs=10)
     torch.save(trained_model.state_dict(), 'yolo_vgg16.pth')
